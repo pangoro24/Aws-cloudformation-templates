@@ -1,0 +1,135 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: ALB with Access Logging, HTTP-to-HTTPS redirection, header dropping, and Lambda target
+
+Parameters:
+  VPCId:
+    Type: AWS::EC2::VPC::Id
+    Description: The VPC ID where the ALB and Lambda function will be deployed
+
+Resources:
+  # Security Group for the ALB
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: Allow HTTP and HTTPS traffic
+      VpcId: !Ref VPCId
+      SecurityGroupIngress: 
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+
+  # Application Load Balancer
+  ALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: MyAppLoadBalancer
+      Scheme: internet-facing
+      LoadBalancerAttributes:
+        - Key: access_logs.s3.enabled
+          Value: 'true'
+        - Key: access_logs.s3.bucket
+          Value: !Ref AccessLogBucket
+        - Key: access_logs.s3.prefix
+          Value: my-alb-logs  # Optional: Prefix for log files
+        - Key: routing.http.drop_invalid_header_fields.enabled
+          Value: 'true'  # Drop HTTP headers
+      Subnets:
+        - subnet-xxxxxxxx  # Replace with your subnet IDs
+        - subnet-yyyyyyyy
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+
+  # S3 Bucket for ALB Access Logs
+  AccessLogBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: my-alb-access-logs-unique  # Replace with a globally unique name
+      AccessControl: LogDeliveryWrite
+      VersioningConfiguration:
+        Status: Enabled
+
+  # Lambda Execution Role
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaLoggingPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  # Lambda Function
+  MyLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: MyLambdaTarget
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          def handler(event, context):
+              return {
+                  'statusCode': 200,
+                  'body': 'Hello from Lambda behind an ALB!'
+              }
+      Runtime: python3.9
+      Timeout: 5
+
+  # Lambda Target Group for ALB
+  ALBLambdaTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: MyLambdaTargetGroup
+      TargetType: lambda
+      Targets:
+        - Id: !Ref MyLambdaFunction
+
+  # Listener for HTTP (Redirect HTTP to HTTPS)
+  HTTPListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig:
+            Protocol: HTTPS
+            Port: '443'
+            StatusCode: HTTP_301
+      LoadBalancerArn: !Ref ALB
+      Port: 80
+      Protocol: HTTP
+
+  # Listener for HTTPS (Forward to Lambda)
+  HTTPSListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBLambdaTargetGroup
+      LoadBalancerArn: !Ref ALB
+      Port: 443
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn: arn:aws:acm:region:account:certificate/certificate-id  # Replace with a valid ACM certificate ARN
+
+Outputs:
+  LoadBalancerDNS:
+    Description: DNS name of the Application Load Balancer
+    Value: !GetAtt ALB.DNSName
