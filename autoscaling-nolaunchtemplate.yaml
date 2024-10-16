@@ -1,1 +1,53 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation Template for an Auto Scaling Group with Launch Configuration
+
+Resources:
+  # Define the Launch Configuration for the EC2 instances
+  MyLaunchConfiguration:
+    Type: 'AWS::AutoScaling::LaunchConfiguration'
+    Properties:
+      ImageId: ami-0c55b159cbfafe1f0  # Replace with your desired AMI ID
+      InstanceType: t2.micro
+      SecurityGroups:
+        - !Ref MySecurityGroup
+      KeyName: my-key-pair  # Replace with your key pair name
+      InstanceMonitoring: false
+
+  # Define the Auto Scaling Group
+  MyAutoScalingGroup:
+    Type: 'AWS::AutoScaling::AutoScalingGroup'
+    Properties:
+      VPCZoneIdentifier:
+        - subnet-abc123456  # Replace with your subnet IDs
+      LaunchConfigurationName: !Ref MyLaunchConfiguration
+      MinSize: '1'
+      MaxSize: '3'
+      DesiredCapacity: '1'
+      TargetGroupARNs:
+        - arn:aws:elasticloadbalancing:region:account-id:targetgroup/my-target-group/abc123  # Replace with your target group ARN
+      Tags:
+        - Key: Name
+          Value: MyAutoScalingGroupInstance
+          PropagateAtLaunch: true
+
+  # Define a Security Group for the EC2 instances
+  MySecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Security group for Auto Scaling instances
+      VpcId: vpc-abc123456  # Replace with your VPC ID
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: 0.0.0.0/0  # Allow SSH from anywhere (for demo purposes; secure this as needed)
+
+Outputs:
+  AutoScalingGroupName:
+    Description: Name of the Auto Scaling Group
+    Value: !Ref MyAutoScalingGroup
+
+  LaunchConfigurationName:
+    Description: Name of the Launch Configuration
+    Value: !Ref MyLaunchConfiguration
 
