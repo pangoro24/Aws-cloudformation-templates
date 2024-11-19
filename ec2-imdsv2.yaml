@@ -1,0 +1,80 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Instancia EC2 registrada en AWS Systems Manager con permisos mínimos para cumplir con SSM.1
+
+Resources:
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: SSMMinimumAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:DescribeInstanceInformation
+                  - ssm:UpdateInstanceInformation
+                  - ssm:ListInstanceAssociations
+                  - ssm:ListCommandInvocations
+                  - ssm:PutComplianceItems
+                  - ssm:SendCommand
+                  - ssm:SendHeartbeat
+                  - ssm:UpdateComplianceItems
+                  - ssm:GetDeployablePatchSnapshotForInstance
+                  - ssm:DescribeDocument
+                  - ssm:GetDocument
+                  - ec2messages:SendReply
+                  - ec2messages:GetMessages
+                  - ec2messages:DeleteMessage
+                Resource: "*"
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref InstanceRole
+      Path: /
+
+  MyInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      ImageId: ami-0abcdef1234567890  # Reemplaza con un AMI válido
+      KeyName: my-key-pair  # Reemplaza con el nombre de tu key pair
+      IamInstanceProfile: !Ref InstanceProfile
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeviceIndex: 0
+          SubnetId: subnet-0abcdef1234567890  # Reemplaza con un ID de subred válido
+          GroupSet:
+            - !Ref MySecurityGroup
+      Tags:
+        - Key: Name
+          Value: EC2WithSSM
+
+  MySecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Permite tráfico necesario para SSM
+      VpcId: vpc-0abcdef1234567890  # Reemplaza con un ID de VPC válido
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+
+Outputs:
+  InstanceId:
+    Description: ID de la instancia EC2
+    Value: !Ref MyInstance
+  PublicIP:
+    Description: Dirección IP pública de la instancia EC2
+    Value: !GetAtt MyInstance.PublicIp
