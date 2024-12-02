@@ -1,0 +1,23 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation template para crear un EventBridge Bus y su política que restringe el acceso a la misma cuenta.
+
+Resources:
+  EventBus:
+    Type: AWS::Events::EventBus
+    Properties:
+      Name: bus-demo
+
+  EventBusPolicy:
+    Type: AWS::Events::EventBusPolicy
+    Properties:
+      EventBusName: !Ref EventBus
+      StatementId: AllowSameAccountAccess
+      Statement:
+        Effect: Allow
+        Action: 
+          - "events:PutEvents"
+        Principal: 
+          AWS:
+            - !Sub "arn:aws:iam::${AWS::AccountId}:root"
+        Resource:
+          - !GetAtt EventBus.Arn
