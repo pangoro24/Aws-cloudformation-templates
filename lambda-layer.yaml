@@ -1,0 +1,37 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation template to create a Lambda Layer for Python using a ZIP file from S3.
+
+Parameters:
+  LayerName:
+    Type: String
+    Description: Name of the Lambda Layer.
+    Default: PythonLayer
+
+  S3BucketName:
+    Type: String
+    Description: Name of the S3 bucket where the ZIP file is stored.
+
+  S3ObjectKey:
+    Type: String
+    Description: Key (path) to the ZIP file in the S3 bucket.
+
+  CompatibleRuntimes:
+    Type: CommaDelimitedList
+    Description: List of compatible runtimes for the Lambda Layer.
+    Default: python3.8,python3.9
+
+Resources:
+  LambdaLayer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      LayerName: !Ref LayerName
+      Content:
+        S3Bucket: !Ref S3BucketName
+        S3Key: !Ref S3ObjectKey
+      CompatibleRuntimes: !Ref CompatibleRuntimes
+      Description: Lambda Layer for Python from S3 bucket.
+
+Outputs:
+  LambdaLayerArn:
+    Description: ARN of the created Lambda Layer.
+    Value: !Ref LambdaLayer
