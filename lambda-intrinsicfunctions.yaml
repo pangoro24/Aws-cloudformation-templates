@@ -1,0 +1,116 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  CloudFormation template to deploy a simple Lambda function within a specified VPC, utilizing various intrinsic functions.
+
+Parameters:
+  Subnet1:
+    Type: String
+    Description: The first subnet ID.
+
+  Subnet2:
+    Type: String
+    Description: The second subnet ID.
+
+  SecurityGroup:
+    Type: String
+    Description: The security group ID.
+
+  VPCId:
+    Type: String
+    Description: The VPC ID.
+
+  LambdaFunctionName:
+    Type: String
+    Default: MyLambdaFunction
+    Description: The name of the Lambda function.
+
+Mappings:
+  RegionMap:
+    us-east-1:
+      AMI: ami-0abcdef1234567890
+    us-west-2:
+      AMI: ami-0abcdef1234567891
+
+Resources:
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaExecutionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+
+  LambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${LambdaFunctionName}--
+        ${AWS::StackName}--
+        ${AWS::Region}"
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: !Join
+          - "\n"
+          - - "def handler(event, context):"
+            - "    return {\"statusCode\": 200, \"body\": \"Hello from Lambda!\"}"
+      Runtime: python3.9
+      Timeout: !If [IsProdEnvironment, 15, 10]
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+        SubnetIds:
+          - !Select [0, !Split [",", !Ref Subnet1]]
+          - !Select [1, !Split [",", !Ref Subnet2]]
+      Environment:
+        Variables:
+          REGION: !Ref "AWS::Region"
+          ACCOUNT_ID: !Ref "AWS::AccountId"
+
+  SecurityGroupRule:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref SecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      CidrIp: !Cidr [!GetAtt LambdaFunction.VpcConfig, 0, 24]
+
+Conditions:
+  IsProdEnvironment: !Equals [!Ref EnvironmentType, "prod"]
+
+Outputs:
+  LambdaFunctionArn:
+    Description: The ARN of the Lambda function.
+    Value: !GetAtt LambdaFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-LambdaFunctionArn"
+
+  LambdaExecutionRoleArn:
+    Description: The ARN of the Lambda execution role.
+    Value: !GetAtt LambdaExecutionRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-LambdaExecutionRoleArn"
+
+  LambdaVpcId:
+    Description: The VPC ID of the Lambda function.
+    Value: !Ref VPCId
+    Export:
+      Name: !Sub "${AWS::StackName}-LambdaVpcId"
+
+  SelectedAMI:
+    Description: The AMI selected based on the region.
+    Value: !FindInMap [RegionMap, !Ref "AWS::Region", AMI]
